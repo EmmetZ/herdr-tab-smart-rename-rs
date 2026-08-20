@@ -23,7 +23,7 @@ jobs:
       - uses: taiki-e/create-gh-release-action@v1
         with:
           changelog: CHANGELOG.md
-          title: herdr-tab-smart-rename-rs $version
+          title: $version
           draft: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
