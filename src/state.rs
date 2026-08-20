@@ -34,6 +34,8 @@ pub struct TabState {
     #[serde(default)]
     pub saw_working: bool,
     #[serde(default)]
+    pub initialization_complete: bool,
+    #[serde(default)]
     pub auto_after_done: bool,
 }
 

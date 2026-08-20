@@ -51,12 +51,10 @@ The plugin handles these transitions as follows:
 
 - `working`: resolve the owning tab (from `tab_id`, or from `pane_id` through
   the live snapshot) and remember that this tab has run an agent.
-- `done` or `idle`: rename only when the plugin observed `working` for that
-  tab, or the event explicitly reports a prior `working`/`blocked` state, and
-  the focused agent session contains a user prompt. An initial `idle` event,
-  or an initialization cycle without a prompt, is ignored without consuming
-  the later automatic attempt. Codex reports the end of a completed response
-  as `idle`.
+- first `done` or `idle`: establish the agent-ready baseline without renaming.
+- later `done` or `idle`: rename only when the plugin observed `working` for
+  that tab, or the event explicitly reports a prior `working`/`blocked` state.
+  Codex reports the end of a completed response as `idle`.
 - any other status: no rename.
 
 The full state-machine contract and regression scenarios are documented in

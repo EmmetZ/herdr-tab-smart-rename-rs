@@ -94,6 +94,12 @@ impl<'a> Service<'a> {
             }
             let saw_work = record.saw_working
                 || matches!(event.old_status().as_deref(), Some("working" | "blocked"));
+            if !record.initialization_complete {
+                record.initialization_complete = true;
+                record.saw_working = false;
+                return Ok(false);
+            }
+            record.saw_working = false;
             Ok(saw_work)
         })?;
 
@@ -171,18 +177,6 @@ impl<'a> Service<'a> {
                 from: tab.label.clone(),
                 candidate: None,
                 reason,
-                used_model: false,
-                changed: false,
-                skipped: true,
-            });
-        }
-
-        if automatic_after_done && !has_user_prompt(tab, &snap) {
-            return Ok(RenameResult {
-                tab: tab.tab_id.clone(),
-                from: tab.label.clone(),
-                candidate: None,
-                reason: "no user prompt received".to_string(),
                 used_model: false,
                 changed: false,
                 skipped: true,
@@ -345,11 +339,6 @@ fn tab_id_for_pane(snap: &HerdrSnapshot, pane_id: &str) -> Option<String> {
         .map(|pane| pane.tab_id.clone())
 }
 
-fn has_user_prompt(tab: &HerdrTab, snap: &HerdrSnapshot) -> bool {
-    focused_pane_for(tab, snap)
-        .is_some_and(|pane| !session_user_messages(pane.agent_session.as_ref()).is_empty())
-}
-
 fn is_completion_status(status: Option<&str>) -> bool {
     matches!(status, Some("done" | "idle"))
 }
@@ -395,23 +384,49 @@ fn session_user_messages(session: Option<&AgentSession>) -> Vec<String> {
 
 fn user_message_from_line(line: &str) -> Option<String> {
     let value: Value = serde_json::from_str(line).ok()?;
-    let message = value.get("message")?;
-    if message.get("role")?.as_str()? != "user" {
-        return None;
-    }
-    let content = message.get("content")?;
-    let text = match content {
+    let message = user_message(&value)?;
+    let text = message_text(message.get("content")?);
+    let text = bounded_text(text, 1_000);
+    (!text.is_empty()).then_some(text)
+}
+
+fn user_message(value: &Value) -> Option<&Value> {
+    [
+        value.get("message"),
+        value.get("payload"),
+        value.pointer("/payload/message"),
+        value.pointer("/payload/item"),
+        value.get("item"),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|message| {
+        message.get("role").and_then(Value::as_str) == Some("user")
+            && message.get("content").is_some()
+    })
+}
+
+fn message_text(content: &Value) -> String {
+    match content {
         Value::String(value) => value.clone(),
         Value::Array(parts) => parts
             .iter()
-            .filter(|part| part.get("type").and_then(Value::as_str) == Some("text"))
+            .filter(|part| {
+                matches!(
+                    part.get("type").and_then(Value::as_str),
+                    Some("text" | "input_text")
+                )
+            })
             .filter_map(|part| part.get("text").and_then(Value::as_str))
             .collect::<Vec<_>>()
             .join(" "),
+        Value::Object(_) => content
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
         _ => String::new(),
-    };
-    let text = bounded_text(text, 1_000);
-    (!text.is_empty()).then_some(text)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -579,7 +594,7 @@ mod tests {
         let path = tmp.path().join("session.jsonl");
         fs::write(
             &path,
-            "{\"message\":{\"role\":\"user\",\"content\":\"Fix tab naming\"}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Fix tab naming\"}]}}\n",
         )
         .unwrap();
         AgentSession {
@@ -592,6 +607,26 @@ mod tests {
         let mut snap = snapshot(tab_label);
         snap.panes[0].agent_session = Some(user_session(tmp));
         snap
+    }
+
+    #[test]
+    fn parses_codex_payload_user_message() {
+        let line = "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Fix tab naming\"}]}}";
+
+        assert_eq!(
+            user_message_from_line(line).as_deref(),
+            Some("Fix tab naming")
+        );
+    }
+
+    #[test]
+    fn preserves_legacy_user_message_parsing() {
+        let line = "{\"message\":{\"role\":\"user\",\"content\":\"Fix tab naming\"}}";
+
+        assert_eq!(
+            user_message_from_line(line).as_deref(),
+            Some("Fix tab naming")
+        );
     }
 
     #[test]
@@ -666,7 +701,7 @@ mod tests {
     }
 
     #[test]
-    fn serialized_herdr_status_events_rename_after_first_idle() {
+    fn serialized_herdr_status_events_rename_after_first_user_cycle() {
         let tmp = TempDir::new().unwrap();
         let fake = FakeHerdr {
             snap: RefCell::new(snapshot_with_user_prompt("1", &tmp)),
@@ -705,8 +740,38 @@ mod tests {
                 "agent_status": "idle"
             }),
         };
+        assert!(
+            service
+                .handle_agent_status_event_payload(idle)
+                .unwrap()
+                .is_none()
+        );
+
+        let user_working = AgentStatusEvent {
+            event: Some("pane_agent_status_changed".into()),
+            data: json!({
+                "type": "pane_agent_status_changed",
+                "pane_id": "p1",
+                "workspace_id": "w1",
+                "agent_status": "working"
+            }),
+        };
+        assert!(
+            service
+                .handle_agent_status_event_payload(user_working)
+                .unwrap()
+                .is_none()
+        );
         let result = service
-            .handle_agent_status_event_payload(idle)
+            .handle_agent_status_event_payload(AgentStatusEvent {
+                event: Some("pane_agent_status_changed".into()),
+                data: json!({
+                    "type": "pane_agent_status_changed",
+                    "pane_id": "p1",
+                    "workspace_id": "w1",
+                    "agent_status": "idle"
+                }),
+            })
             .unwrap()
             .unwrap();
 
@@ -749,7 +814,7 @@ mod tests {
     }
 
     #[test]
-    fn initialization_cycle_without_prompt_does_not_consume_auto_rename() {
+    fn initialization_cycle_without_session_does_not_consume_auto_rename() {
         let tmp = TempDir::new().unwrap();
         let fake = FakeHerdr {
             snap: RefCell::new(snapshot("1")),
@@ -783,15 +848,27 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        let skipped = service
-            .handle_agent_status_event_payload(idle)
-            .unwrap()
-            .unwrap();
-        assert!(skipped.skipped);
-        assert_eq!(skipped.reason, "no user prompt received");
+        assert!(
+            service
+                .handle_agent_status_event_payload(idle)
+                .unwrap()
+                .is_none()
+        );
         assert!(fake.renames.borrow().is_empty());
 
-        fake.snap.borrow_mut().panes[0].agent_session = Some(user_session(&tmp));
+        let user_working = AgentStatusEvent {
+            event: Some("pane_agent_status_changed".into()),
+            data: json!({
+                "pane_id": "p1",
+                "agent_status": "working"
+            }),
+        };
+        assert!(
+            service
+                .handle_agent_status_event_payload(user_working)
+                .unwrap()
+                .is_none()
+        );
         let result = service
             .handle_agent_status_event_payload(AgentStatusEvent {
                 event: Some("pane_agent_status_changed".into()),
@@ -820,6 +897,19 @@ mod tests {
             reason: "current task".into(),
         });
         let service = Service::new(&fake, &namer, Some(tmp.path().to_path_buf()));
+        let initial_idle = AgentStatusEvent {
+            event: Some("pane_agent_status_changed".into()),
+            data: json!({
+                "pane_id": "p1",
+                "agent_status": "idle"
+            }),
+        };
+        assert!(
+            service
+                .handle_agent_status_event_payload(initial_idle)
+                .unwrap()
+                .is_none()
+        );
         let idle = AgentStatusEvent {
             event: Some("pane_agent_status_changed".into()),
             data: json!({

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Establish a per-tab initialization baseline from the first completion event,
+  then rename after the next observed work cycle. This avoids both startup
+  renames and reliance on opaque Codex session IDs.
+
+### Changed
+
+- Prefer 2-3 word, 22-character task labels and remove generic lead verbs from
+  automatic names.
+
 ## [0.1.4] - 2026-08-20
 
 ### Fixed

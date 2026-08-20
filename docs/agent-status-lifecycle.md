@@ -3,9 +3,8 @@
 ## Goal
 
 Automatic tab naming must run exactly once after the first real agent response
-to a user prompt in an eligible tab. Starting an agent is not itself evidence
-of a user task, so an initialization-time `idle` event must never rename the
-tab.
+in an eligible tab. Herdr emits a completion event while it initializes an
+interactive agent, so that first completion event must never rename the tab.
 
 ## Event identity
 
@@ -21,27 +20,29 @@ state machine can observe a completion without recording its preceding work.
 
 ## State machine
 
-The persisted state is scoped by tab ID and has two relevant flags:
+The persisted state is scoped by tab ID and has three relevant flags:
 
 - `saw_working`: a `working` event was observed for the tab.
+- `initialization_complete`: the tab has passed its first completion event,
+  which establishes the agent-ready baseline.
 - `auto_after_done`: the one automatic naming attempt for the tab has already
   been made.
 
-Prompt evidence is read from the focused agent session at completion time. It
-requires at least one non-empty user message. The plugin intentionally skips
-automatic naming when the session cannot provide that evidence; the explicit
-`rename-now` action remains available in that case.
+Herdr exposes a Codex session by opaque ID in the live snapshot, not always as
+a readable transcript path. Session text remains optional naming context, but
+is not an event gate.
 
 | Incoming status | Required evidence | Action |
 | --- | --- | --- |
 | `working` | Resolvable tab ID | Set `saw_working`; do not rename. |
-| `done` / `idle` | `saw_working`, or an explicit prior status of `working` / `blocked`; and a user prompt is present | Attempt automatic naming once. |
-| `done` / `idle` | No preceding work evidence, or no user prompt | Ignore the event without consuming the one automatic attempt. |
+| First `done` / `idle` | None | Mark initialization complete, clear `saw_working`, and do not rename. |
+| Later `done` / `idle` | `saw_working`, or an explicit prior status of `working` / `blocked` | Attempt automatic naming once. |
+| Later `done` / `idle` | No preceding work evidence | Ignore the event. |
 | Any other status | None | Ignore the event. |
 
-An absent prior status is not completion evidence. This is essential because
-Herdr may emit an initial `idle` event while it creates an agent pane, before
-the user submits a prompt.
+An absent prior status is not completion evidence. The baseline completion
+event is ignored regardless of its prior status, ensuring that agent startup
+does not consume the later automatic naming attempt.
 
 ## Naming guardrails
 
@@ -53,10 +54,10 @@ rename a manually named tab because it is directly user initiated.
 ## Required regression coverage
 
 - An initial `idle` event with no earlier `working` event does not rename.
-- An initialization `working` → `idle` sequence with no user prompt does not
-  rename or consume the later automatic attempt.
+- An initialization `working` → `idle` sequence does not rename or consume
+  the later automatic attempt.
 - A serialized event sequence containing only `pane_id` performs one rename
-  for `working` followed by `idle`.
+  for the first post-initialization `working` followed by `idle`.
 - A completion event with explicit `old_status = working` can rename even if
   the plugin did not receive the earlier `working` event.
 - A second completion event does not perform a second automatic rename.

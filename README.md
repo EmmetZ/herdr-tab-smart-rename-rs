@@ -87,12 +87,12 @@ Change `key` to any available Herdr binding. This invokes the same manual rename
 
 No background process is required. The plugin reacts to Herdr's `pane.agent_status_changed` event and renames a tab only when all of the following are true:
 
-1. The agent was observed in the `working` state.
-2. The current agent session contains a user prompt.
-3. The agent reaches its first completion state: `done`, or typically `idle` after Codex finishes a response.
+1. The tab has passed its initial completion event, which only establishes the agent-ready baseline.
+2. The agent is subsequently observed in the `working` state.
+3. The agent reaches its next completion state: `done`, or typically `idle` after Codex finishes a response.
 4. The tab label is still default or numeric.
 
-The initial `idle` state and initialization cycles without a user prompt do not trigger a rename. Existing meaningful labels are left unchanged.
+The initial completion state does not trigger a rename. Existing meaningful labels are left unchanged.
 
 ## Naming policy
 

@@ -87,12 +87,12 @@ description = "smart rename current tab"
 
 无需启动后台进程。插件响应 Herdr 的 `pane.agent_status_changed` 事件，且仅在同时满足下列条件时重命名 tab：
 
-1. 已观察到 agent 进入 `working` 状态。
-2. 当前 agent session 中已有用户 prompt。
-3. agent 首次进入完成状态：`done`；Codex 完成一轮回复后通常为 `idle`。
+1. tab 已通过首次完成事件，该事件仅用于建立 agent 就绪基线。
+2. 随后已观察到 agent 进入 `working` 状态。
+3. agent 再次进入完成状态：`done`；Codex 完成一轮回复后通常为 `idle`。
 4. tab 名称仍为默认名称或数字名称。
 
-初始化阶段的 `idle`，以及没有用户 prompt 的初始化周期，不会触发重命名。已有的有意义名称也会保持不变。
+初始化阶段的完成状态不会触发重命名。已有的有意义名称也会保持不变。
 
 ## 命名规则
 
