@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2] - 2026-08-20
+
+### Fixed
+
+- Trigger the one-time automatic tab rename when Codex transitions to `idle`
+  after its first completed response.
+
 ## [0.1.1] - 2026-08-20
 
 ### Added

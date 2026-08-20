@@ -74,7 +74,7 @@ impl<'a> Service<'a> {
             return Ok(None);
         }
 
-        if status.as_deref() != Some("done") {
+        if !is_completion_status(status.as_deref()) {
             return Ok(None);
         }
 
@@ -319,6 +319,10 @@ fn tab_id_for_pane(snap: &HerdrSnapshot, pane_id: &str) -> Option<String> {
         .iter()
         .find(|pane| pane.pane_id == pane_id)
         .map(|pane| pane.tab_id.clone())
+}
+
+fn is_completion_status(status: Option<&str>) -> bool {
+    matches!(status, Some("done" | "idle"))
 }
 
 fn session_user_messages(session: Option<&AgentSession>) -> Vec<String> {
@@ -594,5 +598,14 @@ mod tests {
         let second = service.evaluate_tab("t1", false, false, true).unwrap();
         assert!(second.skipped);
         assert_eq!(fake.renames.borrow().len(), 1);
+    }
+
+    #[test]
+    fn idle_is_a_completion_status_for_codex() {
+        assert!(is_completion_status(Some("done")));
+        assert!(is_completion_status(Some("idle")));
+        assert!(!is_completion_status(Some("working")));
+        assert!(!is_completion_status(Some("blocked")));
+        assert!(!is_completion_status(None));
     }
 }
