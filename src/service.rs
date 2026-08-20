@@ -57,7 +57,14 @@ impl<'a> Service<'a> {
         let Some(event) = AgentStatusEvent::from_env()? else {
             return Ok(None);
         };
-        if event.event.as_deref() != Some("pane.agent_status_changed") {
+        self.handle_agent_status_event_payload(event)
+    }
+
+    fn handle_agent_status_event_payload(
+        &self,
+        event: AgentStatusEvent,
+    ) -> Result<Option<RenameResult>> {
+        if !is_agent_status_event(event.event.as_deref()) {
             return Ok(None);
         }
 
@@ -323,6 +330,13 @@ fn tab_id_for_pane(snap: &HerdrSnapshot, pane_id: &str) -> Option<String> {
 
 fn is_completion_status(status: Option<&str>) -> bool {
     matches!(status, Some("done" | "idle"))
+}
+
+fn is_agent_status_event(event: Option<&str>) -> bool {
+    matches!(
+        event,
+        Some("pane.agent_status_changed" | "pane_agent_status_changed")
+    )
 }
 
 fn session_user_messages(session: Option<&AgentSession>) -> Vec<String> {
@@ -607,5 +621,57 @@ mod tests {
         assert!(!is_completion_status(Some("working")));
         assert!(!is_completion_status(Some("blocked")));
         assert!(!is_completion_status(None));
+    }
+
+    #[test]
+    fn serialized_herdr_status_events_rename_after_first_idle() {
+        let fake = FakeHerdr {
+            snap: RefCell::new(snapshot("1")),
+            read: "Implemented Rust rewrite".into(),
+            process: None,
+            renames: RefCell::new(vec![]),
+        };
+        let namer = FixedNamer(NameSuggestion {
+            tab: Some("Implement Rust Rewrite".into()),
+            reason: "current task".into(),
+        });
+        let tmp = TempDir::new().unwrap();
+        let service = Service::new(&fake, &namer, Some(tmp.path().to_path_buf()));
+
+        let working = AgentStatusEvent {
+            event: Some("pane_agent_status_changed".into()),
+            data: json!({
+                "type": "pane_agent_status_changed",
+                "pane_id": "p1",
+                "workspace_id": "w1",
+                "agent_status": "working"
+            }),
+        };
+        assert!(
+            service
+                .handle_agent_status_event_payload(working)
+                .unwrap()
+                .is_none()
+        );
+
+        let idle = AgentStatusEvent {
+            event: Some("pane_agent_status_changed".into()),
+            data: json!({
+                "type": "pane_agent_status_changed",
+                "pane_id": "p1",
+                "workspace_id": "w1",
+                "agent_status": "idle"
+            }),
+        };
+        let result = service
+            .handle_agent_status_event_payload(idle)
+            .unwrap()
+            .unwrap();
+
+        assert!(result.changed);
+        assert_eq!(
+            fake.renames.borrow().as_slice(),
+            [("t1".into(), "Implement Rust Rewrite".into())]
+        );
     }
 }
