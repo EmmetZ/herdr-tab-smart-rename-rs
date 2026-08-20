@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3] - 2026-08-20
+
+### Fixed
+
+- Handle Herdr's serialized `pane_agent_status_changed` event name so Codex
+  tabs are renamed after their first idle response.
+
 ## [0.1.2] - 2026-08-20
 
 ### Fixed
