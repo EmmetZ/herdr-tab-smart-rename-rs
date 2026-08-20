@@ -24,6 +24,7 @@ pub struct ProviderConfig {
     pub provider: String,
     pub base_url: String,
     pub model: String,
+    pub reasoning_effort: Option<String>,
     pub timeout_ms: u64,
     pub api_key: String,
 }
@@ -66,12 +67,7 @@ impl Namer for OpenAiCompatibleNamer {
         });
 
         if let Some(object) = body.as_object_mut()
-            && let Some(reasoning) = pick(
-                &self.env,
-                &HashMap::new(),
-                &HashMap::new(),
-                "SMART_RENAME_REASONING_EFFORT",
-            )
+            && let Some(reasoning) = &config.reasoning_effort
         {
             object.insert("reasoning_effort".to_string(), json!(reasoning));
         }
@@ -109,18 +105,42 @@ pub fn ensure_provider_file(config_dir: &Path) -> Result<PathBuf> {
     set_private_permissions(config_dir, 0o700)?;
 
     let path = config_dir.join("provider.env");
-    match OpenOptions::new().write(true).create_new(true).open(&path) {
+    match create_private_file(&path) {
         Ok(mut file) => {
             file.write_all(PROVIDER_EXAMPLE.as_bytes())
                 .with_context(|| format!("failed to write {}", path.display()))?;
-            set_private_permissions(&path, 0o600)?;
         }
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(error) => {
             return Err(error).with_context(|| format!("failed to create {}", path.display()));
         }
     }
+    anyhow::ensure!(
+        fs::symlink_metadata(&path)
+            .with_context(|| format!("failed to inspect {}", path.display()))?
+            .file_type()
+            .is_file(),
+        "provider configuration must be a regular file: {}",
+        path.display()
+    );
+    set_private_permissions(&path, 0o600)?;
     Ok(path)
+}
+
+#[cfg(unix)]
+fn create_private_file(path: &Path) -> std::io::Result<fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn create_private_file(path: &Path) -> std::io::Result<fs::File> {
+    OpenOptions::new().write(true).create_new(true).open(path)
 }
 
 pub fn ensure_provider_file_from_env() -> Result<PathBuf> {
@@ -155,6 +175,32 @@ fn load_provider_config(env: &HashMap<String, String>) -> Result<ProviderConfig>
     let provider = required_pick(env, &file_env, &defaults, "SMART_RENAME_PROVIDER")?;
     let base_url = required_pick(env, &file_env, &defaults, "SMART_RENAME_BASE_URL")?;
     let model = required_pick(env, &file_env, &defaults, "SMART_RENAME_MODEL")?;
+    let configured_reasoning = pick(
+        env,
+        &file_env,
+        &HashMap::new(),
+        "SMART_RENAME_REASONING_EFFORT",
+    );
+    let reasoning_effort = configured_reasoning.or_else(|| {
+        (provider
+            == defaults
+                .get("SMART_RENAME_PROVIDER")
+                .map(String::as_str)
+                .unwrap_or_default())
+        .then(|| {
+            defaults
+                .get("SMART_RENAME_REASONING_EFFORT")
+                .filter(|value| !value.trim().is_empty())
+                .cloned()
+        })
+        .flatten()
+    });
+    if let Some(reasoning_effort) = &reasoning_effort {
+        anyhow::ensure!(
+            matches!(reasoning_effort.as_str(), "low" | "medium" | "high"),
+            "SMART_RENAME_REASONING_EFFORT must be low, medium, or high"
+        );
+    }
     let timeout_ms = required_pick(env, &file_env, &defaults, "SMART_RENAME_TIMEOUT_MS")?
         .parse::<u64>()
         .context("SMART_RENAME_TIMEOUT_MS must be a positive integer")?;
@@ -179,6 +225,7 @@ fn load_provider_config(env: &HashMap<String, String>) -> Result<ProviderConfig>
         provider,
         base_url: base_url.trim_end_matches('/').to_string(),
         model,
+        reasoning_effort,
         timeout_ms,
         api_key,
     })
@@ -375,5 +422,82 @@ mod tests {
             fs::read_to_string(path).unwrap(),
             "OPENAI_API_KEY=existing-key\n"
         );
+    }
+
+    #[test]
+    fn rejects_non_file_provider_configuration() {
+        let directory = tempdir().unwrap();
+        fs::create_dir(directory.path().join("provider.env")).unwrap();
+
+        assert!(ensure_provider_file(directory.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restores_private_permissions_on_existing_provider_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("provider.env");
+        fs::write(&path, "OPENAI_API_KEY=existing-key\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        ensure_provider_file(directory.path()).unwrap();
+
+        assert_eq!(
+            fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn loads_reasoning_effort_from_provider_file() {
+        let directory = tempdir().unwrap();
+        fs::write(
+            directory.path().join("provider.env"),
+            "SMART_RENAME_API_KEY=test-key\nSMART_RENAME_REASONING_EFFORT=high\n",
+        )
+        .unwrap();
+        let env = HashMap::from([(
+            "HERDR_PLUGIN_CONFIG_DIR".to_string(),
+            directory.path().display().to_string(),
+        )]);
+
+        assert_eq!(
+            load_provider_config(&env)
+                .unwrap()
+                .reasoning_effort
+                .as_deref(),
+            Some("high")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_reasoning_effort() {
+        let env = HashMap::from([
+            ("SMART_RENAME_API_KEY".to_string(), "test-key".to_string()),
+            (
+                "SMART_RENAME_REASONING_EFFORT".to_string(),
+                "maximum".to_string(),
+            ),
+        ]);
+
+        assert!(load_provider_config(&env).is_err());
+    }
+
+    #[test]
+    fn omits_default_reasoning_effort_for_another_provider() {
+        let directory = tempdir().unwrap();
+        fs::write(
+            directory.path().join("provider.env"),
+            "SMART_RENAME_PROVIDER=compatible\nSMART_RENAME_API_KEY=test-key\n",
+        )
+        .unwrap();
+        let env = HashMap::from([(
+            "HERDR_PLUGIN_CONFIG_DIR".to_string(),
+            directory.path().display().to_string(),
+        )]);
+
+        assert_eq!(load_provider_config(&env).unwrap().reasoning_effort, None);
     }
 }

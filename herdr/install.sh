@@ -74,10 +74,16 @@ if [ -n "${HERDR_PLUGIN_CONFIG_DIR:-}" ]; then
   PROVIDER_FILE="$CONFIG_DIR/provider.env"
   mkdir -p "$CONFIG_DIR"
   chmod 0700 "$CONFIG_DIR"
-  if [ ! -e "$PROVIDER_FILE" ]; then
+  if [ -e "$PROVIDER_FILE" ] || [ -L "$PROVIDER_FILE" ]; then
+    if [ ! -f "$PROVIDER_FILE" ] || [ -L "$PROVIDER_FILE" ]; then
+      echo "$NAME: provider configuration must be a regular file: $PROVIDER_FILE" >&2
+      exit 1
+    fi
+  else
     install -m 0600 "$ROOT/provider.env.example" "$PROVIDER_FILE"
     echo "$NAME: created $PROVIDER_FILE"
   fi
+  chmod 0600 "$PROVIDER_FILE"
 fi
 
 echo "$NAME: installed $BIN_DIR/$NAME"

@@ -39,21 +39,20 @@ herdr plugin action invoke configure-ai --plugin tab-smart-rename
 通过 `herdr plugin install` 安装时，插件会在 Herdr 提供的私有配置目录中创建
 `provider.env`。该文件以 `provider.env.example` 初始化，已有配置不会被覆盖。
 
-最小配置：
+`provider.env` 使用以下格式（每次模型请求前重新读取）：
 
 ```dotenv
+# 默认 OpenAI 配置
 OPENAI_API_KEY=你的_key
-```
-
-也可以使用 OpenAI 兼容服务：
-
-```dotenv
-SMART_RENAME_API_KEY=你的_key
+SMART_RENAME_PROVIDER=openai
 SMART_RENAME_BASE_URL=https://api.openai.com/v1
-SMART_RENAME_MODEL=gpt-4.1-mini
+SMART_RENAME_MODEL=gpt-5.6-luna
+# 可选值：low、medium、high
+SMART_RENAME_REASONING_EFFORT=medium
+SMART_RENAME_TIMEOUT_MS=45000
 ```
 
-如果同时设置了 `SMART_RENAME_API_KEY` 和 `OPENAI_API_KEY`，插件优先使用 `SMART_RENAME_API_KEY`。
+使用其他 OpenAI 兼容服务时，设置 `SMART_RENAME_API_KEY`，并按服务商要求替换 `SMART_RENAME_PROVIDER`、`SMART_RENAME_BASE_URL` 和 `SMART_RENAME_MODEL`。如果同时设置了 `SMART_RENAME_API_KEY` 和 `OPENAI_API_KEY`，插件优先使用 `SMART_RENAME_API_KEY`。`SMART_RENAME_REASONING_EFFORT` 可选值为 `low`、`medium` 或 `high`；未配置时，非默认 provider 不会发送该字段。
 
 ## 使用
 
