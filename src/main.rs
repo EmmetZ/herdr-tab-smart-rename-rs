@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use herdr_tab_smart_rename_rs::{
-    HerdrCli, OpenAiCompatibleNamer, Service, check_ai_config, notify_failure,
+    HerdrCli, OpenAiCompatibleNamer, Service, check_ai_config, ensure_provider_file_from_env,
+    notify_failure,
 };
+use std::process::Command as ProcessCommand;
 
 #[derive(Parser)]
 #[command(name = "herdr-tab-smart-rename-rs")]
@@ -16,6 +18,7 @@ enum Command {
     RenameNow,
     AgentStatusEvent,
     CheckAi,
+    ConfigureAi,
     DryRun,
 }
 
@@ -53,6 +56,17 @@ fn run() -> Result<()> {
         Command::CheckAi => {
             let config = check_ai_config().context("AI configuration is invalid")?;
             println!("{}/{}", config.provider, config.model);
+        }
+        Command::ConfigureAi => {
+            let path = ensure_provider_file_from_env()?;
+            let editor = std::env::var("VISUAL")
+                .or_else(|_| std::env::var("EDITOR"))
+                .unwrap_or_else(|_| "vi".to_string());
+            let status = ProcessCommand::new(&editor)
+                .arg(&path)
+                .status()
+                .with_context(|| format!("failed to start editor {editor}"))?;
+            anyhow::ensure!(status.success(), "editor {editor} exited with {status}");
         }
         Command::DryRun => {
             let result = service

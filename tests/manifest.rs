@@ -36,6 +36,18 @@ fn manifest_uses_rust_binary_without_bun() {
                     ))
     );
     assert!(
+        json["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|action| action["id"] == "configure-ai"
+                && action["command"][2]
+                    == Value::String(
+                        "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-tab-smart-rename-rs\" configure-ai"
+                            .into()
+                    ))
+    );
+    assert!(
         json["events"]
             .as_array()
             .unwrap()

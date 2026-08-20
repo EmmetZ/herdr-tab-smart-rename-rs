@@ -69,4 +69,15 @@ mkdir -p "$BIN_DIR"
 tar -xzf "$TMP_DIR/$ARCHIVE" -C "$TMP_DIR"
 install -m 0755 "$TMP_DIR/$NAME" "$BIN_DIR/$NAME"
 
+if [ -n "${HERDR_PLUGIN_CONFIG_DIR:-}" ]; then
+  CONFIG_DIR="$HERDR_PLUGIN_CONFIG_DIR"
+  PROVIDER_FILE="$CONFIG_DIR/provider.env"
+  mkdir -p "$CONFIG_DIR"
+  chmod 0700 "$CONFIG_DIR"
+  if [ ! -e "$PROVIDER_FILE" ]; then
+    install -m 0600 "$ROOT/provider.env.example" "$PROVIDER_FILE"
+    echo "$NAME: created $PROVIDER_FILE"
+  fi
+fi
+
 echo "$NAME: installed $BIN_DIR/$NAME"

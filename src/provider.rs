@@ -6,7 +6,8 @@ use reqwest::blocking::Client;
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use url::Url;
@@ -100,6 +101,45 @@ pub fn check_ai_config() -> Result<ProviderConfig> {
     let config = load_provider_config(&env)?;
     let _ = load_naming_prompt(&env)?;
     Ok(config)
+}
+
+pub fn ensure_provider_file(config_dir: &Path) -> Result<PathBuf> {
+    fs::create_dir_all(config_dir)
+        .with_context(|| format!("failed to create {}", config_dir.display()))?;
+    set_private_permissions(config_dir, 0o700)?;
+
+    let path = config_dir.join("provider.env");
+    match OpenOptions::new().write(true).create_new(true).open(&path) {
+        Ok(mut file) => {
+            file.write_all(PROVIDER_EXAMPLE.as_bytes())
+                .with_context(|| format!("failed to write {}", path.display()))?;
+            set_private_permissions(&path, 0o600)?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to create {}", path.display()));
+        }
+    }
+    Ok(path)
+}
+
+pub fn ensure_provider_file_from_env() -> Result<PathBuf> {
+    let config_dir = std::env::var("HERDR_PLUGIN_CONFIG_DIR")
+        .context("HERDR_PLUGIN_CONFIG_DIR is required for AI configuration")?;
+    ensure_provider_file(Path::new(&config_dir))
+}
+
+#[cfg(unix)]
+fn set_private_permissions(path: &Path, mode: u32) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+        .with_context(|| format!("failed to set permissions on {}", path.display()))
+}
+
+#[cfg(not(unix))]
+fn set_private_permissions(_path: &Path, _mode: u32) -> Result<()> {
+    Ok(())
 }
 
 fn load_provider_config(env: &HashMap<String, String>) -> Result<ProviderConfig> {
@@ -295,6 +335,7 @@ fn parse_model_output(text: &str) -> Result<NameSuggestion> {
 mod tests {
     use super::*;
     use serde_json::json;
+    use tempfile::tempdir;
 
     #[test]
     fn parses_model_json_and_code_fence() {
@@ -320,5 +361,19 @@ mod tests {
             "choices": [{"message": {"content": "{\"tab\":\"bad\",\"reason\":\"bad\"}"}}]
         });
         assert!(parse_chat_response(&response.to_string()).is_err());
+    }
+
+    #[test]
+    fn initializes_provider_file_without_overwriting_existing_configuration() {
+        let directory = tempdir().unwrap();
+        let path = ensure_provider_file(directory.path()).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), PROVIDER_EXAMPLE);
+
+        fs::write(&path, "OPENAI_API_KEY=existing-key\n").unwrap();
+        assert_eq!(ensure_provider_file(directory.path()).unwrap(), path);
+        assert_eq!(
+            fs::read_to_string(path).unwrap(),
+            "OPENAI_API_KEY=existing-key\n"
+        );
     }
 }

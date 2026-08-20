@@ -30,12 +30,14 @@ herdr plugin install EmmetZ/herdr-tab-smart-rename-rs
 
 ## 配置
 
-创建或编辑插件配置文件：
+通过插件 action 打开私有配置文件：
 
 ```sh
-mkdir -p "$(herdr plugin config-dir tab-smart-rename)"
-"${EDITOR:-nano}" "$(herdr plugin config-dir tab-smart-rename)/provider.env"
+herdr plugin action invoke configure-ai --plugin tab-smart-rename
 ```
+
+通过 `herdr plugin install` 安装时，插件会在 Herdr 提供的私有配置目录中创建
+`provider.env`。该文件以 `provider.env.example` 初始化，已有配置不会被覆盖。
 
 最小配置：
 
