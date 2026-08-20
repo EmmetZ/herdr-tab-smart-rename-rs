@@ -68,6 +68,20 @@ herdr plugin action invoke check-ai --plugin tab-smart-rename
 herdr plugin action invoke rename-now --plugin tab-smart-rename
 ```
 
+### 快捷键
+
+在 Herdr 的用户键位配置中添加以下配置，即可通过 `prefix+t` 手动重命名当前 tab：
+
+```toml
+[[keys.command]]
+key = "prefix+t"
+type = "plugin_action"
+command = "tab-smart-rename.rename-now"
+description = "smart rename current tab"
+```
+
+将 `key` 改为任意未占用的 Herdr 键位即可。该快捷键调用与上述 `rename-now` action 相同的手动重命名逻辑，会覆盖当前 tab 的已有名称。
+
 自动重命名无需额外启动后台进程。插件通过 Herdr 的 `pane.agent_status_changed` 事件触发：当 coding agent 从工作状态进入完成状态后，如果当前 tab 仍是默认/数字名称，插件会自动生成名称。
 
 ## 命名规则
