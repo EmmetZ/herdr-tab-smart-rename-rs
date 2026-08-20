@@ -49,9 +49,18 @@ Herdr reports coding-agent lifecycle state with values such as `working`, `block
 
 The plugin handles these transitions as follows:
 
-- `working`: remember that this tab has run an agent.
-- `done` or `idle`: if this is the first completed run for the tab and the tab is still auto-eligible, read the pane content and rename once. Codex reports the end of a completed response as `idle`.
+- `working`: resolve the owning tab (from `tab_id`, or from `pane_id` through
+  the live snapshot) and remember that this tab has run an agent.
+- `done` or `idle`: rename only when the plugin observed `working` for that
+  tab, or the event explicitly reports a prior `working`/`blocked` state, and
+  the focused agent session contains a user prompt. An initial `idle` event,
+  or an initialization cycle without a prompt, is ignored without consuming
+  the later automatic attempt. Codex reports the end of a completed response
+  as `idle`.
 - any other status: no rename.
+
+The full state-machine contract and regression scenarios are documented in
+[`agent-status-lifecycle.md`](agent-status-lifecycle.md).
 
 The manifest declares this with `[[events]]` and `on = "pane.agent_status_changed"`. This satisfies the current requirement without the reference plugin's listener and sweep.
 

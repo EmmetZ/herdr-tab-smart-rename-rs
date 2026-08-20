@@ -82,7 +82,7 @@ description = "smart rename current tab"
 
 将 `key` 改为任意未占用的 Herdr 键位即可。该快捷键调用与上述 `rename-now` action 相同的手动重命名逻辑，会覆盖当前 tab 的已有名称。
 
-自动重命名无需额外启动后台进程。插件通过 Herdr 的 `pane.agent_status_changed` 事件触发：当 coding agent 从工作状态进入完成状态后（`done`；Codex 在完成一轮回复后通常报告为 `idle`），如果当前 tab 仍是默认/数字名称，插件会自动生成名称。
+自动重命名无需额外启动后台进程。插件通过 Herdr 的 `pane.agent_status_changed` 事件触发：仅在已经观察到 agent 进入 `working`、且当前 agent session 中已存在用户 prompt 后，首次进入完成状态（`done`；Codex 在完成一轮回复后通常报告为 `idle`）时，才会为默认/数字名称的 tab 生成名称。Agent 初始化时出现的 `idle`，以及没有用户 prompt 的初始化工作周期，都不会触发重命名。
 
 ## 命名规则
 
@@ -110,6 +110,7 @@ herdr plugin link .
 ## 文档
 
 - [Herdr plugin API research](docs/herdr-plugin-api.md)
+- [Agent status lifecycle](docs/agent-status-lifecycle.md)
 - [Reference implementation notes](docs/reference-implementation.md)
 - [Naming policy](docs/naming-policy.md)
 - [Release packaging](docs/release-packaging.md)

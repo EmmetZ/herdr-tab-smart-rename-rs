@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4] - 2026-08-20
+
+### Fixed
+
+- Ignore initialization-time `idle` events and completion cycles without a
+  user prompt, preventing automatic naming before the first user prompt.
+- Resolve `working` events by `pane_id` when their payload omits `tab_id`.
+
 ## [0.1.3] - 2026-08-20
 
 ### Fixed

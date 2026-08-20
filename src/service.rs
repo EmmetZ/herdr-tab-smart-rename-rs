@@ -69,10 +69,9 @@ impl<'a> Service<'a> {
         }
 
         let status = event.new_status();
-        let tab_id = event.tab_id();
 
         if status.as_deref() == Some("working") {
-            if let Some(tab_id) = tab_id {
+            if let Some(tab_id) = self.event_tab_id(&event)? {
                 with_state(self.state_dir.as_deref(), |state| {
                     state.tabs.entry(tab_id).or_default().saw_working = true;
                     Ok(())
@@ -85,13 +84,8 @@ impl<'a> Service<'a> {
             return Ok(None);
         }
 
-        let snap = self.herdr.snapshot()?;
-        let tab_id = tab_id
-            .or_else(|| {
-                event
-                    .pane_id()
-                    .and_then(|pane_id| tab_id_for_pane(&snap, &pane_id))
-            })
+        let tab_id = self
+            .event_tab_id(&event)?
             .context("agent completion event did not identify a tab")?;
         let should_run = with_state(self.state_dir.as_deref(), |state| {
             let record = state.tabs.entry(tab_id.clone()).or_default();
@@ -100,7 +94,7 @@ impl<'a> Service<'a> {
             }
             let saw_work = record.saw_working
                 || matches!(event.old_status().as_deref(), Some("working" | "blocked"));
-            Ok(saw_work || event.old_status().is_none())
+            Ok(saw_work)
         })?;
 
         if !should_run {
@@ -108,6 +102,17 @@ impl<'a> Service<'a> {
         }
 
         Ok(Some(self.evaluate_tab(&tab_id, false, false, true)?))
+    }
+
+    fn event_tab_id(&self, event: &AgentStatusEvent) -> Result<Option<String>> {
+        if let Some(tab_id) = event.tab_id() {
+            return Ok(Some(tab_id));
+        }
+        let Some(pane_id) = event.pane_id() else {
+            return Ok(None);
+        };
+        let snap = self.herdr.snapshot()?;
+        Ok(tab_id_for_pane(&snap, &pane_id))
     }
 
     pub fn notify_result(&self, result: &RenameResult) {
@@ -166,6 +171,18 @@ impl<'a> Service<'a> {
                 from: tab.label.clone(),
                 candidate: None,
                 reason,
+                used_model: false,
+                changed: false,
+                skipped: true,
+            });
+        }
+
+        if automatic_after_done && !has_user_prompt(tab, &snap) {
+            return Ok(RenameResult {
+                tab: tab.tab_id.clone(),
+                from: tab.label.clone(),
+                candidate: None,
+                reason: "no user prompt received".to_string(),
                 used_model: false,
                 changed: false,
                 skipped: true,
@@ -328,6 +345,11 @@ fn tab_id_for_pane(snap: &HerdrSnapshot, pane_id: &str) -> Option<String> {
         .map(|pane| pane.tab_id.clone())
 }
 
+fn has_user_prompt(tab: &HerdrTab, snap: &HerdrSnapshot) -> bool {
+    focused_pane_for(tab, snap)
+        .is_some_and(|pane| !session_user_messages(pane.agent_session.as_ref()).is_empty())
+}
+
 fn is_completion_status(status: Option<&str>) -> bool {
     matches!(status, Some("done" | "idle"))
 }
@@ -462,6 +484,7 @@ mod tests {
     };
     use serde_json::json;
     use std::cell::RefCell;
+    use std::fs;
     use tempfile::TempDir;
 
     struct FakeHerdr {
@@ -552,6 +575,25 @@ mod tests {
         }
     }
 
+    fn user_session(tmp: &TempDir) -> AgentSession {
+        let path = tmp.path().join("session.jsonl");
+        fs::write(
+            &path,
+            "{\"message\":{\"role\":\"user\",\"content\":\"Fix tab naming\"}}\n",
+        )
+        .unwrap();
+        AgentSession {
+            kind: "path".into(),
+            value: path.to_string_lossy().into_owned(),
+        }
+    }
+
+    fn snapshot_with_user_prompt(tab_label: &str, tmp: &TempDir) -> HerdrSnapshot {
+        let mut snap = snapshot(tab_label);
+        snap.panes[0].agent_session = Some(user_session(tmp));
+        snap
+    }
+
     #[test]
     fn manual_action_forces_rename() {
         let fake = FakeHerdr {
@@ -594,8 +636,9 @@ mod tests {
 
     #[test]
     fn automatic_completion_renames_default_tab_once() {
+        let tmp = TempDir::new().unwrap();
         let fake = FakeHerdr {
-            snap: RefCell::new(snapshot("1")),
+            snap: RefCell::new(snapshot_with_user_prompt("1", &tmp)),
             read: "Implemented Rust rewrite".into(),
             process: None,
             renames: RefCell::new(vec![]),
@@ -604,7 +647,6 @@ mod tests {
             tab: Some("Implement Rust Rewrite".into()),
             reason: "current task".into(),
         });
-        let tmp = TempDir::new().unwrap();
         let service = Service::new(&fake, &namer, Some(tmp.path().to_path_buf()));
 
         let result = service.evaluate_tab("t1", false, false, true).unwrap();
@@ -625,8 +667,9 @@ mod tests {
 
     #[test]
     fn serialized_herdr_status_events_rename_after_first_idle() {
+        let tmp = TempDir::new().unwrap();
         let fake = FakeHerdr {
-            snap: RefCell::new(snapshot("1")),
+            snap: RefCell::new(snapshot_with_user_prompt("1", &tmp)),
             read: "Implemented Rust rewrite".into(),
             process: None,
             renames: RefCell::new(vec![]),
@@ -635,7 +678,6 @@ mod tests {
             tab: Some("Implement Rust Rewrite".into()),
             reason: "current task".into(),
         });
-        let tmp = TempDir::new().unwrap();
         let service = Service::new(&fake, &namer, Some(tmp.path().to_path_buf()));
 
         let working = AgentStatusEvent {
@@ -673,5 +715,127 @@ mod tests {
             fake.renames.borrow().as_slice(),
             [("t1".into(), "Implement Rust Rewrite".into())]
         );
+    }
+
+    #[test]
+    fn initial_idle_without_work_does_not_rename() {
+        let fake = FakeHerdr {
+            snap: RefCell::new(snapshot("1")),
+            read: String::new(),
+            process: None,
+            renames: RefCell::new(vec![]),
+        };
+        let namer = FixedNamer(NameSuggestion {
+            tab: Some("Implement Rust Rewrite".into()),
+            reason: "current task".into(),
+        });
+        let tmp = TempDir::new().unwrap();
+        let service = Service::new(&fake, &namer, Some(tmp.path().to_path_buf()));
+        let idle = AgentStatusEvent {
+            event: Some("pane_agent_status_changed".into()),
+            data: json!({
+                "pane_id": "p1",
+                "agent_status": "idle"
+            }),
+        };
+
+        assert!(
+            service
+                .handle_agent_status_event_payload(idle)
+                .unwrap()
+                .is_none()
+        );
+        assert!(fake.renames.borrow().is_empty());
+    }
+
+    #[test]
+    fn initialization_cycle_without_prompt_does_not_consume_auto_rename() {
+        let tmp = TempDir::new().unwrap();
+        let fake = FakeHerdr {
+            snap: RefCell::new(snapshot("1")),
+            read: String::new(),
+            process: None,
+            renames: RefCell::new(vec![]),
+        };
+        let namer = FixedNamer(NameSuggestion {
+            tab: Some("Implement Rust Rewrite".into()),
+            reason: "current task".into(),
+        });
+        let service = Service::new(&fake, &namer, Some(tmp.path().to_path_buf()));
+        let working = AgentStatusEvent {
+            event: Some("pane_agent_status_changed".into()),
+            data: json!({
+                "pane_id": "p1",
+                "agent_status": "working"
+            }),
+        };
+        let idle = AgentStatusEvent {
+            event: Some("pane_agent_status_changed".into()),
+            data: json!({
+                "pane_id": "p1",
+                "agent_status": "idle"
+            }),
+        };
+
+        assert!(
+            service
+                .handle_agent_status_event_payload(working)
+                .unwrap()
+                .is_none()
+        );
+        let skipped = service
+            .handle_agent_status_event_payload(idle)
+            .unwrap()
+            .unwrap();
+        assert!(skipped.skipped);
+        assert_eq!(skipped.reason, "no user prompt received");
+        assert!(fake.renames.borrow().is_empty());
+
+        fake.snap.borrow_mut().panes[0].agent_session = Some(user_session(&tmp));
+        let result = service
+            .handle_agent_status_event_payload(AgentStatusEvent {
+                event: Some("pane_agent_status_changed".into()),
+                data: json!({
+                    "pane_id": "p1",
+                    "agent_status": "idle"
+                }),
+            })
+            .unwrap()
+            .unwrap();
+        assert!(result.changed);
+        assert_eq!(fake.renames.borrow().len(), 1);
+    }
+
+    #[test]
+    fn explicit_working_prior_status_allows_completion_when_work_event_was_missed() {
+        let tmp = TempDir::new().unwrap();
+        let fake = FakeHerdr {
+            snap: RefCell::new(snapshot_with_user_prompt("1", &tmp)),
+            read: String::new(),
+            process: None,
+            renames: RefCell::new(vec![]),
+        };
+        let namer = FixedNamer(NameSuggestion {
+            tab: Some("Implement Rust Rewrite".into()),
+            reason: "current task".into(),
+        });
+        let service = Service::new(&fake, &namer, Some(tmp.path().to_path_buf()));
+        let idle = AgentStatusEvent {
+            event: Some("pane_agent_status_changed".into()),
+            data: json!({
+                "pane_id": "p1",
+                "old_status": "working",
+                "agent_status": "idle"
+            }),
+        };
+
+        assert!(
+            service
+                .handle_agent_status_event_payload(idle)
+                .unwrap()
+                .unwrap()
+                .changed
+        );
+        assert_eq!(fake.renames.borrow().len(), 1);
     }
 }
