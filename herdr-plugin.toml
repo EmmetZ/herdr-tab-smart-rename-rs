@@ -25,9 +25,16 @@ command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-tab-smart-rename-rs\
 [[actions]]
 id = "configure-ai"
 title = "Smart Rename: configure AI"
-description = "Open the private AI provider configuration."
+description = "Open the private AI provider configuration in an overlay."
 contexts = ["global", "workspace", "tab", "pane"]
 command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-tab-smart-rename-rs\" configure-ai"]
+
+[[panes]]
+id = "provider-config"
+title = "Smart Rename AI"
+description = "Edit the private AI provider configuration."
+placement = "overlay"
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-tab-smart-rename-rs\" configure-ai-editor"]
 
 [[events]]
 on = "pane.agent_status_changed"

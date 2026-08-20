@@ -30,7 +30,7 @@ herdr plugin install EmmetZ/herdr-tab-smart-rename-rs
 
 ## 配置
 
-通过插件 action 打开私有配置文件：
+通过插件 action 以 Herdr overlay 打开私有配置文件：
 
 ```sh
 herdr plugin action invoke configure-ai --plugin tab-smart-rename

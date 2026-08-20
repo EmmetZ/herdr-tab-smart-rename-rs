@@ -35,6 +35,17 @@ fn manifest_uses_rust_binary_without_bun() {
                             .into()
                     ))
     );
+    assert!(json["panes"].as_array().unwrap().iter().any(|pane| {
+        pane["id"] == "provider-config"
+            && pane["placement"] == "overlay"
+            && pane["command"][0] == Value::String("sh".into())
+            && pane["command"][1] == Value::String("-c".into())
+            && pane["command"][2]
+                == Value::String(
+                    "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-tab-smart-rename-rs\" configure-ai-editor"
+                        .into(),
+                )
+    }));
     assert!(
         json["actions"]
             .as_array()

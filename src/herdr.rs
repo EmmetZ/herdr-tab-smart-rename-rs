@@ -40,6 +40,26 @@ impl HerdrCli {
         }
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
+
+    pub fn open_plugin_pane(
+        &self,
+        plugin_id: &str,
+        entrypoint: &str,
+        placement: &str,
+    ) -> Result<()> {
+        self.run([
+            "plugin",
+            "pane",
+            "open",
+            "--plugin",
+            plugin_id,
+            "--entrypoint",
+            entrypoint,
+            "--placement",
+            placement,
+        ])?;
+        Ok(())
+    }
 }
 
 impl HerdrApi for HerdrCli {

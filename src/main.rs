@@ -4,7 +4,7 @@ use herdr_tab_smart_rename_rs::{
     HerdrCli, OpenAiCompatibleNamer, Service, check_ai_config, ensure_provider_file_from_env,
     notify_failure,
 };
-use std::process::Command as ProcessCommand;
+use std::process::{Command as ProcessCommand, Stdio};
 
 #[derive(Parser)]
 #[command(name = "herdr-tab-smart-rename-rs")]
@@ -19,6 +19,7 @@ enum Command {
     AgentStatusEvent,
     CheckAi,
     ConfigureAi,
+    ConfigureAiEditor,
     DryRun,
 }
 
@@ -58,12 +59,18 @@ fn run() -> Result<()> {
             println!("{}/{}", config.provider, config.model);
         }
         Command::ConfigureAi => {
+            herdr.open_plugin_pane("tab-smart-rename", "provider-config", "overlay")?;
+        }
+        Command::ConfigureAiEditor => {
             let path = ensure_provider_file_from_env()?;
             let editor = std::env::var("VISUAL")
                 .or_else(|_| std::env::var("EDITOR"))
                 .unwrap_or_else(|_| "vi".to_string());
             let status = ProcessCommand::new(&editor)
                 .arg(&path)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
                 .status()
                 .with_context(|| format!("failed to start editor {editor}"))?;
             anyhow::ensure!(status.success(), "editor {editor} exited with {status}");
