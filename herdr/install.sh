@@ -2,6 +2,7 @@
 set -euo pipefail
 
 NAME="herdr-tab-smart-rename-rs"
+REPO="EmmetZ/herdr-tab-smart-rename-rs"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN_DIR="$ROOT/bin"
 
@@ -10,29 +11,6 @@ if [ -z "$VERSION" ]; then
   echo "$NAME: cannot read version from herdr-plugin.toml" >&2
   exit 1
 fi
-
-resolve_repo() {
-  if [ -n "${SMART_RENAME_RELEASE_REPO:-}" ]; then
-    printf '%s\n' "$SMART_RENAME_RELEASE_REPO"
-    return
-  fi
-
-  remote="$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)"
-  case "$remote" in
-    git@github.com:*) repo="${remote#git@github.com:}" ;;
-    ssh://git@github.com/*) repo="${remote#ssh://git@github.com/}" ;;
-    https://github.com/*) repo="${remote#https://github.com/}" ;;
-    http://github.com/*) repo="${remote#http://github.com/}" ;;
-    *)
-      echo "$NAME: cannot infer GitHub repo from origin remote" >&2
-      echo "$NAME: set SMART_RENAME_RELEASE_REPO=owner/repo and retry" >&2
-      return 1
-      ;;
-  esac
-
-  repo="${repo%.git}"
-  printf '%s\n' "$repo"
-}
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) target="aarch64-apple-darwin" ;;
@@ -45,7 +23,6 @@ case "$(uname -s)-$(uname -m)" in
     ;;
 esac
 
-REPO="$(resolve_repo)"
 TAG="v$VERSION"
 ARCHIVE="$NAME-$target.tar.gz"
 CHECKSUM="$NAME-$target.sha256"

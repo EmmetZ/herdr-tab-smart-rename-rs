@@ -28,5 +28,8 @@ herdr plugin link .
 ```
 
 ```sh
-herdr plugin install <owner>/herdr-tab-smart-rename-rs
+herdr plugin install EmmetZ/herdr-tab-smart-rename-rs
 ```
+
+The release repository is pinned in `herdr/install.sh` as
+`EmmetZ/herdr-tab-smart-rename-rs`, matching the `herdr-reviewr` style.

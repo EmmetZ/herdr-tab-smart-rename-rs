@@ -14,7 +14,7 @@ The plugin removes the Bun runtime and the reference plugin's detached listener.
 After a tagged release has been published, install with:
 
 ```sh
-herdr plugin install <owner>/herdr-tab-smart-rename-rs
+herdr plugin install EmmetZ/herdr-tab-smart-rename-rs
 ```
 
 The install step runs `herdr/install.sh`. It downloads the matching prebuilt
