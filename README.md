@@ -1,76 +1,77 @@
 # herdr-tab-smart-rename-rs
 
-`herdr-tab-smart-rename-rs` 是一个 Herdr 插件，用于根据当前 tab 中的任务上下文自动生成更有意义的 tab 名称。
+[Chinese / 简体中文](README.zh-CN.md)
 
-它适合在多个 coding agent 并行工作时使用：当 tab 仍是默认名称或数字名称时，插件会读取当前 pane / tab 的上下文，生成一个简短、可识别的名称，降低在多个任务之间切换时的认知成本。
+`herdr-tab-smart-rename-rs` is a Herdr plugin that turns generic tab labels into short, meaningful task names from the current tab context.
 
-## 功能
+It is designed for parallel coding-agent workflows. When a tab still has its default or numeric label, the plugin inspects its pane and tab context, proposes a recognizable name, and makes switching between active tasks easier.
 
-- 手动重命名当前 tab。
-- 在 coding agent 第一次完成后自动重命名默认 tab。
-- 如果用户已经手动命名 tab，则不会覆盖用户命名。
-- 支持 OpenAI 兼容接口。
-- 对常见终端命令提供确定性名称，不必每次都调用 AI。
-- Rust 单二进制实现，不依赖 Bun。
+## Features
 
-## 安装
+- Rename the current tab on demand.
+- Automatically rename a default tab after a coding agent first completes work.
+- Preserve labels that were named manually.
+- Use OpenAI and OpenAI-compatible APIs.
+- Recognize common terminal commands deterministically, avoiding an AI request where possible.
+- Ship as a single Rust binary with no Bun dependency.
 
-通过 Herdr 安装：
+## Install
+
+Install through Herdr:
 
 ```sh
 herdr plugin install EmmetZ/herdr-tab-smart-rename-rs
 ```
 
-支持平台：
+Supported platforms:
 
 - Linux x86_64
 - Linux aarch64
 - macOS x86_64
 - macOS Apple Silicon
 
-## 配置
+## Configure AI
 
-通过插件 action 以 Herdr overlay 打开私有配置文件：
+Open the plugin's private configuration file in a Herdr overlay:
 
 ```sh
 herdr plugin action invoke configure-ai --plugin tab-smart-rename
 ```
 
-通过 `herdr plugin install` 安装时，插件会在 Herdr 提供的私有配置目录中创建
-`provider.env`。该文件以 `provider.env.example` 初始化，已有配置不会被覆盖。
+When installed with `herdr plugin install`, the plugin creates `provider.env` in Herdr's private plugin configuration directory. It initializes the file from `provider.env.example` and never overwrites an existing configuration.
 
-`provider.env` 使用以下格式（每次模型请求前重新读取）：
+`provider.env` is read before every model request:
 
 ```dotenv
-# 默认 OpenAI 配置
-OPENAI_API_KEY=你的_key
+# Default OpenAI configuration
+OPENAI_API_KEY=your_key
 SMART_RENAME_PROVIDER=openai
 SMART_RENAME_BASE_URL=https://api.openai.com/v1
 SMART_RENAME_MODEL=gpt-5.6-luna
-# 可选值：low、medium、high
+# Optional: low, medium, or high
 SMART_RENAME_REASONING_EFFORT=medium
 SMART_RENAME_TIMEOUT_MS=45000
 ```
 
-使用其他 OpenAI 兼容服务时，设置 `SMART_RENAME_API_KEY`，并按服务商要求替换 `SMART_RENAME_PROVIDER`、`SMART_RENAME_BASE_URL` 和 `SMART_RENAME_MODEL`。如果同时设置了 `SMART_RENAME_API_KEY` 和 `OPENAI_API_KEY`，插件优先使用 `SMART_RENAME_API_KEY`。`SMART_RENAME_REASONING_EFFORT` 可选值为 `low`、`medium` 或 `high`；未配置时，非默认 provider 不会发送该字段。
+For another OpenAI-compatible provider, set `SMART_RENAME_API_KEY` and replace `SMART_RENAME_PROVIDER`, `SMART_RENAME_BASE_URL`, and `SMART_RENAME_MODEL` with that provider's values. `SMART_RENAME_API_KEY` takes precedence when both it and `OPENAI_API_KEY` are set. `SMART_RENAME_REASONING_EFFORT` accepts `low`, `medium`, or `high`; when it is not set, the field is omitted for non-default providers.
 
-## 使用
+## Usage
 
-检查 AI 配置：
+Validate the AI configuration:
 
 ```sh
 herdr plugin action invoke check-ai --plugin tab-smart-rename
 ```
 
-手动重命名当前 tab：
+Rename the current tab immediately:
 
 ```sh
 herdr plugin action invoke rename-now --plugin tab-smart-rename
 ```
 
-### 快捷键
+### Key binding
 
-在 Herdr 的用户键位配置中添加以下配置，即可通过 `prefix+t` 手动重命名当前 tab：
+Add the following to your Herdr user key bindings to rename the current tab with `prefix+t`:
 
 ```toml
 [[keys.command]]
@@ -80,13 +81,22 @@ command = "tab-smart-rename.rename-now"
 description = "smart rename current tab"
 ```
 
-将 `key` 改为任意未占用的 Herdr 键位即可。该快捷键调用与上述 `rename-now` action 相同的手动重命名逻辑，会覆盖当前 tab 的已有名称。
+Change `key` to any available Herdr binding. This invokes the same manual rename action and may replace the current tab's existing label.
 
-自动重命名无需额外启动后台进程。插件通过 Herdr 的 `pane.agent_status_changed` 事件触发：仅在已经观察到 agent 进入 `working`、且当前 agent session 中已存在用户 prompt 后，首次进入完成状态（`done`；Codex 在完成一轮回复后通常报告为 `idle`）时，才会为默认/数字名称的 tab 生成名称。Agent 初始化时出现的 `idle`，以及没有用户 prompt 的初始化工作周期，都不会触发重命名。
+### Automatic renaming
 
-## 命名规则
+No background process is required. The plugin reacts to Herdr's `pane.agent_status_changed` event and renames a tab only when all of the following are true:
 
-插件会尽量生成短名称，优先体现当前任务意图，例如：
+1. The agent was observed in the `working` state.
+2. The current agent session contains a user prompt.
+3. The agent reaches its first completion state: `done`, or typically `idle` after Codex finishes a response.
+4. The tab label is still default or numeric.
+
+The initial `idle` state and initialization cycles without a user prompt do not trigger a rename. Existing meaningful labels are left unchanged.
+
+## Naming policy
+
+Names are intentionally concise and task-oriented:
 
 - `fix-tests`
 - `auth-refactor`
@@ -94,11 +104,11 @@ description = "smart rename current tab"
 - `docs-update`
 - `ui-layout`
 
-如果上下文不足，插件会保持保守，不覆盖已有的有意义名称。
+When the context is insufficient, the plugin does not replace an existing meaningful label.
 
-## 本地构建
+## Build locally
 
-从源码构建并 link：
+Build from source and link the plugin:
 
 ```sh
 cargo build --release
@@ -107,7 +117,7 @@ install -m 0755 target/release/herdr-tab-smart-rename-rs bin/herdr-tab-smart-ren
 herdr plugin link .
 ```
 
-## 文档
+## Documentation
 
 - [Herdr plugin API research](docs/herdr-plugin-api.md)
 - [Agent status lifecycle](docs/agent-status-lifecycle.md)
