@@ -1,8 +1,8 @@
 name: release
 
 # Build prebuilt binaries for each supported platform and attach them to the
-# GitHub Release whenever a v* tag is pushed. herdr/install.sh downloads the
-# matching asset on plugin install.
+# draft GitHub Release whenever a v* tag is pushed. herdr/install.sh downloads
+# the matching asset on plugin install. Publish the draft manually after review.
 
 on:
   push:
@@ -54,18 +54,9 @@ jobs:
           target: ${{ matrix.target }}
           archive: $bin-$target
           checksum: sha256
+          locked: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/attest-build-provenance@v4
         with:
           subject-path: herdr-tab-smart-rename-rs-${{ matrix.target }}.tar.gz
-
-  publish:
-    needs: binaries
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Publish release
-        run: gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
