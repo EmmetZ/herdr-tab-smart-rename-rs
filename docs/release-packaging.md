@@ -33,3 +33,10 @@ herdr plugin install EmmetZ/herdr-tab-smart-rename-rs
 
 The release repository is pinned in `herdr/install.sh` as
 `EmmetZ/herdr-tab-smart-rename-rs`, matching the `herdr-reviewr` style.
+
+## Changelog policy
+
+Do not update or commit `CHANGELOG.md` in ordinary feature, fix, or maintenance
+commits. Update and commit it only as part of a release commit, then immediately
+create and push the corresponding `v*` tag. The release workflow uses that
+version of `CHANGELOG.md` to create the draft GitHub Release.
