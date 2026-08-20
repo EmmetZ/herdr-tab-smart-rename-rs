@@ -6,22 +6,22 @@ description = "Rust-powered context-aware names for Herdr task tabs."
 platforms = ["linux", "macos"]
 
 [[build]]
-command = ["cargo", "build", "--release"]
+command = ["bash", "herdr/install.sh"]
 
 [[actions]]
 id = "rename-now"
 title = "Smart Rename: current tab"
 description = "Read the current tab context and rename it now."
 contexts = ["workspace", "tab", "pane"]
-command = ["target/release/herdr-tab-smart-rename-rs", "rename-now"]
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-tab-smart-rename-rs\" rename-now"]
 
 [[actions]]
 id = "check-ai"
 title = "Smart Rename: check AI config"
 description = "Validate provider settings and prompt files without making a request."
 contexts = ["global", "workspace", "tab", "pane"]
-command = ["target/release/herdr-tab-smart-rename-rs", "check-ai"]
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-tab-smart-rename-rs\" check-ai"]
 
 [[events]]
 on = "pane.agent_status_changed"
-command = ["target/release/herdr-tab-smart-rename-rs", "agent-status-event"]
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-tab-smart-rename-rs\" agent-status-event"]

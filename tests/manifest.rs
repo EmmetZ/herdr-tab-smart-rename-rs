@@ -16,16 +16,24 @@ fn manifest_uses_rust_binary_without_bun() {
             Value::String("macos".into()),
         ])
     );
+    assert_eq!(json["build"][0]["command"][0], Value::String("bash".into()));
     assert_eq!(
-        json["build"][0]["command"][0],
-        Value::String("cargo".into())
+        json["build"][0]["command"][1],
+        Value::String("herdr/install.sh".into())
     );
     assert!(
         json["actions"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|action| action["id"] == "rename-now")
+            .any(|action| action["id"] == "rename-now"
+                && action["command"][0] == Value::String("sh".into())
+                && action["command"][1] == Value::String("-c".into())
+                && action["command"][2]
+                    == Value::String(
+                        "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-tab-smart-rename-rs\" rename-now"
+                            .into()
+                    ))
     );
     assert!(
         json["events"]
