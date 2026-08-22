@@ -396,7 +396,7 @@ mod tests {
         assert_eq!(
             parse_chat_response(&response.to_string()).unwrap(),
             NameSuggestion {
-                tab: Some("Repair Tab Ownership".into()),
+                tab: Some("repair tab ownership".into()),
                 reason: "current task".into(),
             }
         );

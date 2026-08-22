@@ -155,7 +155,7 @@ pub struct RenameResult {
 }
 
 static LABEL_WORD: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Z0-9][A-Za-z0-9+.#/'-]*$").unwrap());
+    LazyLock::new(|| Regex::new(r"^[a-z0-9][a-z0-9+.#/'-]*$").unwrap());
 
 pub fn is_default_label(label: &str, number: &Value) -> bool {
     let value = label.trim();
@@ -287,7 +287,7 @@ pub fn heuristic_title(context: &PaneContext) -> Option<String> {
             "bun test",
         ],
     ) {
-        Some("Run Tests".to_string())
+        Some("run tests".to_string())
     } else if contains_any(
         &process,
         &[
@@ -301,13 +301,13 @@ pub fn heuristic_title(context: &PaneContext) -> Option<String> {
             "yarn dev",
         ],
     ) {
-        Some("Dev Server".to_string())
+        Some("dev server".to_string())
     } else if contains_any(&process, &["tail", "journalctl", "docker logs"])
         || output.contains("following logs")
     {
-        Some("View Logs".to_string())
+        Some("view logs".to_string())
     } else if contains_any(&process, &["ssh", "mosh"]) {
-        Some("Remote Shell".to_string())
+        Some("remote shell".to_string())
     } else {
         None
     }
@@ -387,7 +387,7 @@ pub fn normalize_suggestion(tab: Option<String>, reason: String) -> anyhow::Resu
     let reason = bounded_text(reason, 240);
     match tab {
         Some(label) => {
-            let label = sanitize_text(label);
+            let label = sanitize_text(label).to_ascii_lowercase();
             anyhow::ensure!(validate_tab_label(&label), "invalid tab label: {label:?}");
             Ok(NameSuggestion {
                 tab: Some(label),
@@ -409,8 +409,9 @@ mod tests {
         assert!(is_default_label("", &json!(3)));
         assert!(!is_default_label("Manual Task", &json!(3)));
 
-        assert!(validate_tab_label("Repair Tab Ownership"));
-        assert!(validate_tab_label("Optimize VAR Review"));
+        assert!(validate_tab_label("repair tab ownership"));
+        assert!(validate_tab_label("optimize var review"));
+        assert!(!validate_tab_label("Repair Tab Ownership"));
         assert!(!validate_tab_label("bad"));
         assert!(!validate_tab_label("This Label Has Far Too Many Words"));
         assert!(!validate_tab_label("Bad\nLabel"));
