@@ -1,6 +1,6 @@
 id = "tab-smart-rename"
 name = "Smart Rename"
-version = "0.1.5"
+version = "0.1.6"
 min_herdr_version = "0.8.0"
 description = "Rust-powered context-aware names for Herdr task tabs."
 platforms = ["linux", "macos"]

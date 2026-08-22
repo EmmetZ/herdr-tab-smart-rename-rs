@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6] - 2026-08-22
+
+### Fixed
+
+- Always use lowercase labels for deterministic process heuristics and normalize
+  model-generated labels to lowercase before validation.
+
 ## [0.1.5] - 2026-08-20
 
 ### Fixed
